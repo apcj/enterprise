@@ -1424,6 +1424,12 @@ public class HighlyAvailableGraphDatabase
     {
         return storeDir;
     }
+    
+    @Override
+    public TxIdGenerator getTxIdGenerator()
+    {
+        return localGraph().txIdGenerator;
+    }
 
     @Override
     public KernelPanicEventGenerator getKernelPanicGenerator()
