@@ -107,6 +107,7 @@ import org.neo4j.kernel.impl.transaction.LockType;
 import org.neo4j.kernel.impl.transaction.XaDataSourceManager;
 import org.neo4j.kernel.impl.transaction.xaframework.LogIoUtils;
 import org.neo4j.kernel.impl.transaction.xaframework.NoSuchLogVersionException;
+import org.neo4j.kernel.impl.transaction.xaframework.TxIdGenerator;
 import org.neo4j.kernel.impl.transaction.xaframework.XaDataSource;
 import org.neo4j.kernel.impl.transaction.xaframework.XaLogicalLog;
 import org.neo4j.kernel.impl.util.FileUtils;
@@ -406,6 +407,12 @@ public class HighlyAvailableGraphDatabase
     public IdGeneratorFactory getIdGeneratorFactory()
     {
         return localGraph().getIdGeneratorFactory();
+    }
+
+    @Override
+    public TxIdGenerator getTxIdGenerator()
+    {
+        return localGraph().getTxIdGenerator();
     }
 
     @Override
