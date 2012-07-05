@@ -918,6 +918,12 @@ public class HighlyAvailableGraphDatabase
         return localGraph().getManagementBeans( type );
     }
 
+    @Override
+    public boolean transactionRunning()
+    {
+        return localGraph().transactionRunning();
+    }
+
     public final <T> T getManagementBean( Class<T> type )
     {
         return localGraph().getManagementBean( type );
