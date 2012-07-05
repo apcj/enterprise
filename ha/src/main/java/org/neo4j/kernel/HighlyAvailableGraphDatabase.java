@@ -119,7 +119,7 @@ import org.neo4j.kernel.logging.Loggers;
 import org.neo4j.kernel.logging.Logging;
 
 public class HighlyAvailableGraphDatabase
-        implements GraphDatabaseService, GraphDatabaseAPI
+        extends AbstractGraphDatabase implements GraphDatabaseService, GraphDatabaseAPI
 {
     private static final int NEW_MASTER_STARTUP_RETRIES = 3;
     public static final String COPY_FROM_MASTER_TEMP = "temp-copy";
@@ -137,7 +137,7 @@ public class HighlyAvailableGraphDatabase
     private Iterable<KernelExtension> kernelExtensions;
     private Iterable<CacheProvider> cacheProviders;
     private final StringLogger messageLog;
-    private volatile AbstractGraphDatabase internalGraphDatabase;
+    private volatile InternalAbstractGraphDatabase internalGraphDatabase;
     private NodeProxy.NodeLookup nodeLookup;
     private RelationshipProxy.RelationshipLookups relationshipLookups;
 
@@ -198,7 +198,7 @@ public class HighlyAvailableGraphDatabase
         this.cacheProviders = cacheProviders;
 
         config.put( GraphDatabaseSettings.keep_logical_logs.name(), GraphDatabaseSetting.TRUE);
-        config.put( AbstractGraphDatabase.Configuration.store_dir.name(), storeDir );
+        config.put( InternalAbstractGraphDatabase.Configuration.store_dir.name(), storeDir );
         if ( !config.containsKey( GraphDatabaseSettings.cache_type.name() ) )
             config.put( GraphDatabaseSettings.cache_type.name(), GCResistantCacheProvider.NAME );
 
@@ -592,7 +592,7 @@ public class HighlyAvailableGraphDatabase
         localGraph();
     }
 
-    private void checkAndRecoverCorruptLogs( AbstractGraphDatabase localDb,
+    private void checkAndRecoverCorruptLogs( InternalAbstractGraphDatabase localDb,
             boolean copiedStore )
     {
         getMessageLog().logMessage( "Checking for log consistency" );
@@ -797,9 +797,9 @@ public class HighlyAvailableGraphDatabase
      *
      * @return
      */
-    private AbstractGraphDatabase localGraph()
+    private InternalAbstractGraphDatabase localGraph()
     {
-        AbstractGraphDatabase result = internalGraphDatabase;
+        InternalAbstractGraphDatabase result = internalGraphDatabase;
         if( result != null )
         {
             return result;
@@ -936,7 +936,7 @@ public class HighlyAvailableGraphDatabase
         getMessageLog().logMessage( "ReevaluateMyself: machineId=" + machineId + " with master[" + master +
                 "] (I am master=" + iAmCurrentlyMaster + ", " + internalGraphDatabase + ")" );
         pullUpdates = false;
-        AbstractGraphDatabase newDb = null;
+        InternalAbstractGraphDatabase newDb = null;
         try
         {
             if ( master.other().getMachineId() == machineId )
@@ -990,7 +990,7 @@ public class HighlyAvailableGraphDatabase
         }
     }
 
-    private void safelyShutdownDb( AbstractGraphDatabase newDb )
+    private void safelyShutdownDb( InternalAbstractGraphDatabase newDb )
     {
         try
         {
@@ -1005,7 +1005,7 @@ public class HighlyAvailableGraphDatabase
         }
     }
 
-    private void doAfterLocalGraphStarted( AbstractGraphDatabase newDb )
+    private void doAfterLocalGraphStarted( InternalAbstractGraphDatabase newDb )
     {
         broker.setConnectionInformation( newDb.getKernelData() );
         for ( TransactionEventHandler<?> handler : transactionEventHandlers )
@@ -1026,7 +1026,7 @@ public class HighlyAvailableGraphDatabase
         messageLog.logMessage( "--- HIGH AVAILABILITY CONFIGURATION END ---", true );
     }
 
-    private AbstractGraphDatabase startAsSlave()
+    private InternalAbstractGraphDatabase startAsSlave()
     {
         messageLog.logMessage( "Starting[" + machineId + "] as slave", true );
         SlaveGraphDatabase slaveGraphDatabase = new SlaveGraphDatabase( storeDir, configuration.getParams(), storeId, this, broker, logging,
@@ -1038,7 +1038,7 @@ public class HighlyAvailableGraphDatabase
         return slaveGraphDatabase;
     }
 
-    private AbstractGraphDatabase startAsMaster()
+    private InternalAbstractGraphDatabase startAsMaster()
     {
         messageLog.logMessage( "Starting[" + machineId + "] as master", true );
 
@@ -1051,7 +1051,7 @@ public class HighlyAvailableGraphDatabase
     }
 
     // TODO This should be moved to SlaveGraphDatabase
-    private void ensureDataConsistencyWithMaster( AbstractGraphDatabase newDb, Pair<Master, Machine> master )
+    private void ensureDataConsistencyWithMaster( InternalAbstractGraphDatabase newDb, Pair<Master, Machine> master )
     {
         if ( master.other().getMachineId() == machineId )
         {
