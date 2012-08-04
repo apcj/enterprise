@@ -1,9 +1,5 @@
 package org.neo4j.ha;
 
-import static org.neo4j.kernel.configuration.Config.DEFAULT_DATA_SOURCE_NAME;
-
-import java.util.Queue;
-
 import org.neo4j.com.RequestContext;
 import org.neo4j.com.ResourceReleaser;
 import org.neo4j.com.Response;
@@ -18,116 +14,144 @@ import org.neo4j.kernel.ha.LockResult;
 import org.neo4j.kernel.ha.Master;
 import org.neo4j.kernel.impl.nioneo.store.StoreId;
 
-public class FakeMaster implements Master
-{
-    public static final long ANY_CHECKSUM = 0L;
-    public static final int MASTER_ID = 1;
+import static org.neo4j.ha.FakeMasterFixture.NEO_DATA_SOURCE_NAME;
 
-    private final Queue<Triplet<String, Long, TxExtractor>> dataQueue;
-    private final TransactionStream transactionStream = new TransactionStream( DEFAULT_DATA_SOURCE_NAME )
+class FakeMaster implements Master
+{
+    interface MasterDataProvider
     {
+        Triplet<String,Long,TxExtractor> transaction( long txId );
+
+        int id();
+
+        long transactionChecksum( long txId );
+
+        StoreId storeId();
+    }
+
+    private final MasterDataProvider provider;
+
+    public FakeMaster( MasterDataProvider provider )
+    {
+        this.provider = provider;
+    }
+
+    @Override
+    public Response<Void> pullUpdates( RequestContext context )
+    {
+        return new Response<Void>( null, provider.storeId(), new SlaveTransactionStream( context ),
+                                   ResourceReleaser.NO_OP );
+    }
+
+    @Override
+    public Response<Pair<Integer, Long>> getMasterIdForCommittedTx( long txId, StoreId myStoreId )
+    {
+        return new Response<Pair<Integer, Long>>( Pair.of( provider.id(), provider.transactionChecksum( txId ) ),
+                                                  provider.storeId(), TransactionStream.EMPTY, ResourceReleaser.NO_OP );
+    }
+
+    class SlaveTransactionStream extends TransactionStream
+    {
+        private long txId;
+
+        SlaveTransactionStream( RequestContext context )
+        {
+            super( NEO_DATA_SOURCE_NAME );
+            for ( RequestContext.Tx tx : context.lastAppliedTransactions() )
+            {
+                if ( NEO_DATA_SOURCE_NAME.equals( tx.getDataSourceName() ) )
+                {
+                    this.txId = tx.getTxId();
+                    return;
+                }
+            }
+            throw new IllegalStateException( "No information for data source: " + NEO_DATA_SOURCE_NAME );
+        }
+
         @Override
         protected Triplet<String, Long, TxExtractor> fetchNextOrNull()
         {
-            return dataQueue.poll();
+            return provider.transaction( ++txId );
         }
-    };
+    }
 
-    public FakeMaster( Queue<Triplet<String, Long, TxExtractor>> dataQueue )
+    @Override
+    public Response<Void> copyStore( RequestContext context, StoreWriter writer )
     {
-        this.dataQueue = dataQueue;
+        throw new UnsupportedOperationException( "slave of fake master should never need seeding" );
     }
 
     @Override
     public Response<IdAllocation> allocateIds( IdType idType )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<Integer> createRelationshipType( RequestContext context, String name )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<Void> initializeTx( RequestContext context )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<LockResult> acquireNodeWriteLock( RequestContext context, long... nodes )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<LockResult> acquireNodeReadLock( RequestContext context, long... nodes )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<LockResult> acquireGraphWriteLock( RequestContext context )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<LockResult> acquireGraphReadLock( RequestContext context )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<LockResult> acquireRelationshipWriteLock( RequestContext context, long... relationships )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<LockResult> acquireRelationshipReadLock( RequestContext context, long... relationships )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<Long> commitSingleResourceTransaction( RequestContext context, String resource, TxExtractor
             txGetter )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<Void> finishTransaction( RequestContext context, boolean success )
     {
-        return null;
-    }
-
-    @Override
-    public Response<Void> pullUpdates( RequestContext context )
-    {
-        return new Response<Void>( null, new StoreId(), transactionStream, ResourceReleaser.NO_OP );
-    }
-
-    @Override
-    public Response<Pair<Integer, Long>> getMasterIdForCommittedTx( long txId, StoreId myStoreId )
-    {
-        return new Response<Pair<Integer, Long>>( Pair.of( MASTER_ID, ANY_CHECKSUM ), myStoreId,
-                TransactionStream.EMPTY, ResourceReleaser.NO_OP );
-    }
-
-    @Override
-    public Response<Void> copyStore( RequestContext context, StoreWriter writer )
-    {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<Void> copyTransactions( RequestContext context, String dsName, long startTxId, long endTxId )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
@@ -138,19 +162,23 @@ public class FakeMaster implements Master
     @Override
     public Response<LockResult> acquireIndexWriteLock( RequestContext context, String index, String key )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<LockResult> acquireIndexReadLock( RequestContext context, String index, String key )
     {
-        return null;
+        throw readOnly();
     }
 
     @Override
     public Response<Void> pushTransaction( RequestContext context, String resourceName, long tx )
     {
-        return null;
+        throw readOnly();
     }
 
+    private static RuntimeException readOnly()
+    {
+        return new UnsupportedOperationException( "Slave should be read only" );
+    }
 }
