@@ -151,7 +151,7 @@ public class FullCheck
         StoreFactory factory = new StoreFactory(
                 config,
                 new DefaultIdGeneratorFactory(),
-                windowPoolFactory( config ),
+                windowPoolFactory( config, logger ),
                 new DefaultFileSystemAbstraction(),
                 new DefaultLastCommittedTxIdSetter(),
                 logger,
@@ -205,11 +205,11 @@ public class FullCheck
         return records;
     }
 
-    private static WindowPoolFactory windowPoolFactory( Config config )
+    private static WindowPoolFactory windowPoolFactory( Config config, StringLogger logger )
     {
         if ( config.get( use_scan_resistant_window_pools ) )
         {
-            return new ScanResistantWindowPoolFactory( config );
+            return new ScanResistantWindowPoolFactory( config, logger );
         }
         else
         {

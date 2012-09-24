@@ -60,6 +60,7 @@ import static org.neo4j.perftest.enterprise.util.Configuration.SYSTEM_PROPERTIES
 import static org.neo4j.perftest.enterprise.util.Configuration.settingsOf;
 import static org.neo4j.perftest.enterprise.util.Setting.booleanSetting;
 import static org.neo4j.perftest.enterprise.util.Setting.enumSetting;
+import static org.neo4j.perftest.enterprise.util.Setting.integerSetting;
 import static org.neo4j.perftest.enterprise.util.Setting.stringSetting;
 
 public class ConsistencyPerformanceCheck
@@ -75,6 +76,10 @@ public class ConsistencyPerformanceCheck
     private static final Setting<String> all_stores_total_mapped_memory_size =
             stringSetting( "all_stores_total_mapped_memory_size", "2G" );
     private static final Setting<String> mapped_memory_page_size = stringSetting( "mapped_memory_page_size", "4k" );
+    private static final Setting<Boolean> log_mapped_memory_stats =
+            booleanSetting( "log_mapped_memory_stats", true );
+    private static final Setting<Long> log_mapped_memory_stats_interval =
+            integerSetting( "log_mapped_memory_stats_interval", 1000000 );
 
     private enum CheckerVersion
     {
@@ -124,7 +129,7 @@ public class ConsistencyPerformanceCheck
         MOST_FREQUENTLY_USED
         {
             @Override
-            WindowPoolFactory windowPoolFactory( Config config )
+            WindowPoolFactory windowPoolFactory( Config config, StringLogger logger )
             {
                 return new DefaultWindowPoolFactory();
             }
@@ -132,13 +137,13 @@ public class ConsistencyPerformanceCheck
         SCAN_RESISTANT
         {
             @Override
-            WindowPoolFactory windowPoolFactory( Config config )
+            WindowPoolFactory windowPoolFactory( Config config, StringLogger logger )
             {
-                return new ScanResistantWindowPoolFactory( config );
+                return new ScanResistantWindowPoolFactory( config, logger );
             }
         };
 
-        abstract WindowPoolFactory windowPoolFactory( Config config );
+        abstract WindowPoolFactory windowPoolFactory( Config config, StringLogger logger );
 
         StoreAccess createStoreAccess( Configuration configuration )
         {
@@ -146,12 +151,16 @@ public class ConsistencyPerformanceCheck
                     GraphDatabaseSettings.all_stores_total_mapped_memory_size.name(),
                             configuration.get( all_stores_total_mapped_memory_size ),
                     GraphDatabaseSettings.mapped_memory_page_size.name(),
-                            configuration.get( mapped_memory_page_size ) ) ) );
+                            configuration.get( mapped_memory_page_size ),
+                    GraphDatabaseSettings.log_mapped_memory_stats.name(),
+                            configuration.get( log_mapped_memory_stats ).toString(),
+                    GraphDatabaseSettings.log_mapped_memory_stats_interval.name(),
+                            configuration.get( log_mapped_memory_stats_interval ).toString() ) ) );
 
             StoreFactory factory = new StoreFactory(
                     config,
                     new DefaultIdGeneratorFactory(),
-                    windowPoolFactory( config ),
+                    windowPoolFactory( config, StringLogger.SYSTEM ),
                     new DefaultFileSystemAbstraction(),
                     new DefaultLastCommittedTxIdSetter(),
                     StringLogger.DEV_NULL,
