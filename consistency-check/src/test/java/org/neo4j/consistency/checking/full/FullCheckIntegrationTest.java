@@ -79,7 +79,7 @@ public class FullCheckIntegrationTest
 
     private ConsistencySummaryStatistics check( StoreAccess access ) throws ConsistencyCheckIncompleteException
     {
-        FullCheck checker = new FullCheck( true, StoreProcessorTask.TaskExecution.SINGLE_THREADED, ProgressMonitorFactory.NONE );
+        FullCheck checker = new FullCheck( true, TaskExecutionOrder.SINGLE_THREADED, ProgressMonitorFactory.NONE );
         return checker.execute( access, StringLogger.wrap( log ) );
     }
 

@@ -28,25 +28,33 @@ import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.util.DefaultPrettyPrinter;
 import org.neo4j.consistency.checking.full.ConsistencyCheckIncompleteException;
 import org.neo4j.consistency.checking.full.FullCheck;
+import org.neo4j.consistency.checking.full.TaskExecutionOrder;
 import org.neo4j.consistency.checking.old.ConsistencyRecordProcessor;
 import org.neo4j.consistency.checking.old.ConsistencyReporter;
 import org.neo4j.consistency.checking.old.InconsistencyType;
 import org.neo4j.consistency.checking.old.MonitoringConsistencyReporter;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.progress.ProgressMonitorFactory;
+import org.neo4j.kernel.DefaultFileSystemAbstraction;
+import org.neo4j.kernel.DefaultIdGeneratorFactory;
+import org.neo4j.kernel.DefaultLastCommittedTxIdSetter;
+import org.neo4j.kernel.DefaultTxHook;
 import org.neo4j.kernel.EmbeddedGraphDatabase;
 import org.neo4j.kernel.configuration.Config;
 import org.neo4j.kernel.configuration.ConfigurationDefaults;
 import org.neo4j.kernel.impl.nioneo.store.AbstractBaseRecord;
+import org.neo4j.kernel.impl.nioneo.store.DefaultWindowPoolFactory;
+import org.neo4j.kernel.impl.nioneo.store.NeoStore;
 import org.neo4j.kernel.impl.nioneo.store.RecordStore;
 import org.neo4j.kernel.impl.nioneo.store.StoreAccess;
+import org.neo4j.kernel.impl.nioneo.store.StoreFactory;
+import org.neo4j.kernel.impl.nioneo.store.windowpool.ScanResistantWindowPoolFactory;
+import org.neo4j.kernel.impl.nioneo.store.windowpool.WindowPoolFactory;
 import org.neo4j.kernel.impl.util.StringLogger;
 import org.neo4j.perftest.enterprise.util.Configuration;
 import org.neo4j.perftest.enterprise.util.Parameters;
 import org.neo4j.perftest.enterprise.util.Setting;
 
-import static org.neo4j.consistency.checking.full.FullCheck.consistency_check_single_threaded;
-import static org.neo4j.consistency.checking.full.FullCheck.use_scan_resistant_window_pools;
 import static org.neo4j.helpers.collection.MapUtil.stringMap;
 import static org.neo4j.perftest.enterprise.util.Configuration.SYSTEM_PROPERTIES;
 import static org.neo4j.perftest.enterprise.util.Configuration.settingsOf;
@@ -59,18 +67,24 @@ public class ConsistencyPerformanceCheck
     private static final Setting<Boolean> generate_graph = booleanSetting( "generate_graph", false );
     private static final Setting<String> report_file = stringSetting( "report_file", "target/report.json" );
     private static final Setting<CheckerVersion> checker_version = enumSetting( "checker_version", CheckerVersion.NEW );
+    private static final Setting<WindowPoolImplementation> window_pool_implementation =
+            enumSetting( "window_pool_implementation", WindowPoolImplementation.SCAN_RESISTANT );
+    private static final Setting<TaskExecutionOrder> execution_order =
+            enumSetting( "execution_order", TaskExecutionOrder.SINGLE_THREADED );
     private static final Setting<Boolean> wait_before_check = booleanSetting( "wait_before_check", false );
-    private static final Setting<Boolean> single_threaded = booleanSetting( "single_threaded", false );
+    private static final Setting<String> all_stores_total_mapped_memory_size =
+            stringSetting( "all_stores_total_mapped_memory_size", "2G" );
+    private static final Setting<String> mapped_memory_page_size = stringSetting( "mapped_memory_page_size", "4k" );
 
     private enum CheckerVersion
     {
         OLD
         {
             @Override
-            void run( ProgressMonitorFactory progress, String storeDir, boolean singleThreaded )
+            void run( ProgressMonitorFactory progress, StoreAccess storeAccess, TaskExecutionOrder order )
             {
                 new ConsistencyRecordProcessor(
-                        new StoreAccess( storeDir ),
+                        storeAccess,
                         new MonitoringConsistencyReporter( new ConsistencyReporter()
                         {
                             @Override
@@ -95,31 +109,57 @@ public class ConsistencyPerformanceCheck
         NEW
         {
             @Override
-            void run( ProgressMonitorFactory progress, String storeDir, boolean singleThreaded ) throws ConsistencyCheckIncompleteException
+            void run( ProgressMonitorFactory progress, StoreAccess storeAccess, TaskExecutionOrder order ) throws ConsistencyCheckIncompleteException
             {
-                FullCheck.run( progress, storeDir,
-                        new Config( new ConfigurationDefaults( GraphDatabaseSettings.class ).apply( stringMap(
-                                consistency_check_single_threaded.name(), Boolean.toString( singleThreaded ) ) ) ),
-                        StringLogger.DEV_NULL );
-            }
-        },
-        NEWER
-        {
-            @Override
-            void run( ProgressMonitorFactory progress, String storeDir, boolean singleThreaded ) throws ConsistencyCheckIncompleteException
-            {
-                FullCheck.run( progress, storeDir,
-                        new Config( new ConfigurationDefaults( GraphDatabaseSettings.class ).apply( stringMap(
-                                GraphDatabaseSettings.all_stores_total_mapped_memory_size.name(), "12M",
-                                GraphDatabaseSettings.mapped_memory_page_size.name(), "1k",
-                                use_scan_resistant_window_pools.name(), "true",
-                                consistency_check_single_threaded.name(), "true" ) ) ),
-                        StringLogger.DEV_NULL );
+                new FullCheck( false, order, progress ).execute( storeAccess, StringLogger.DEV_NULL );
             }
         };
 
-        abstract void run( ProgressMonitorFactory progress, String storeDir, boolean singleThreaded )
+        abstract void run( ProgressMonitorFactory progress, StoreAccess storeAccess, TaskExecutionOrder order )
                 throws ConsistencyCheckIncompleteException;
+    }
+
+    private enum WindowPoolImplementation
+    {
+        MOST_FREQUENTLY_USED
+        {
+            @Override
+            WindowPoolFactory windowPoolFactory( Config config )
+            {
+                return new DefaultWindowPoolFactory();
+            }
+        },
+        SCAN_RESISTANT
+        {
+            @Override
+            WindowPoolFactory windowPoolFactory( Config config )
+            {
+                return new ScanResistantWindowPoolFactory( config );
+            }
+        };
+
+        abstract WindowPoolFactory windowPoolFactory( Config config );
+
+        StoreAccess createStoreAccess( Configuration configuration )
+        {
+            Config config = new Config( new ConfigurationDefaults( GraphDatabaseSettings.class ).apply( stringMap(
+                    GraphDatabaseSettings.all_stores_total_mapped_memory_size.name(),
+                            configuration.get( all_stores_total_mapped_memory_size ),
+                    GraphDatabaseSettings.mapped_memory_page_size.name(),
+                            configuration.get( mapped_memory_page_size ) ) ) );
+
+            StoreFactory factory = new StoreFactory(
+                    config,
+                    new DefaultIdGeneratorFactory(),
+                    windowPoolFactory( config ),
+                    new DefaultFileSystemAbstraction(),
+                    new DefaultLastCommittedTxIdSetter(),
+                    StringLogger.DEV_NULL,
+                    new DefaultTxHook() );
+            NeoStore neoStore = factory.newNeoStore(
+                    new File( configuration.get( DataGenerator.store_dir ), NeoStore.DEFAULT_NAME ).getAbsolutePath() );
+            return new StoreAccess( neoStore );
+        }
     }
 
     /**
@@ -166,8 +206,8 @@ public class ConsistencyPerformanceCheck
         }
         configuration.get( checker_version ).run( new TimingProgress( new TimeLogger( new JsonReportWriter(
                 configuration ) ), progress ),
-                configuration.get( DataGenerator.store_dir ),
-                configuration.get( single_threaded ) );
+                configuration.get( window_pool_implementation).createStoreAccess( configuration ),
+                configuration.get( execution_order ) );
     }
 
     private static class JsonReportWriter implements TimingProgress.Visitor

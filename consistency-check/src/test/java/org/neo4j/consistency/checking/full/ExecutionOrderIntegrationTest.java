@@ -93,9 +93,9 @@ public class ExecutionOrderIntegrationTest
         StoreAccess store = fixture.storeAccess();
         DiffRecordAccess access = FullCheck.recordAccess( store );
 
-        FullCheck singlePass = new FullCheck( false, StoreProcessorTask.TaskExecution.SINGLE_THREADED,
+        FullCheck singlePass = new FullCheck( false, TaskExecutionOrder.SINGLE_THREADED,
                                               ProgressMonitorFactory.NONE );
-        FullCheck multiPass = new FullCheck( false, StoreProcessorTask.TaskExecution.MULTI_PASS,
+        FullCheck multiPass = new FullCheck( false, TaskExecutionOrder.MULTI_PASS,
                                              ProgressMonitorFactory.NONE );
 
         ConsistencySummaryStatistics multiPassSummary = new ConsistencySummaryStatistics();

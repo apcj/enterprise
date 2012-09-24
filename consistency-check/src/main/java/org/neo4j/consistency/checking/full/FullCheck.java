@@ -60,9 +60,9 @@ import static org.neo4j.consistency.checking.full.FilteringStoreProcessor.NODES_
 import static org.neo4j.consistency.checking.full.FilteringStoreProcessor.PROPERTIES_ONLY;
 import static org.neo4j.consistency.checking.full.FilteringStoreProcessor.RELATIONSHIPS_ONLY;
 import static org.neo4j.consistency.checking.full.FilteringStoreProcessor.STRINGS_ONLY;
-import static org.neo4j.consistency.checking.full.StoreProcessorTask.TaskExecution.MULTI_PASS;
-import static org.neo4j.consistency.checking.full.StoreProcessorTask.TaskExecution.MULTI_THREADED;
-import static org.neo4j.consistency.checking.full.StoreProcessorTask.TaskExecution.SINGLE_THREADED;
+import static org.neo4j.consistency.checking.full.TaskExecutionOrder.MULTI_PASS;
+import static org.neo4j.consistency.checking.full.TaskExecutionOrder.MULTI_THREADED;
+import static org.neo4j.consistency.checking.full.TaskExecutionOrder.SINGLE_THREADED;
 
 public class FullCheck
 {
@@ -80,7 +80,7 @@ public class FullCheck
             new GraphDatabaseSetting.BooleanSetting( "use_scan_resistant_window_pools" );
 
     private final boolean checkPropertyOwners;
-    private final StoreProcessorTask.TaskExecution execution;
+    private final TaskExecutionOrder order;
     private final ProgressMonitorFactory progressFactory;
 
     public FullCheck( boolean checkPropertyOwners, ProgressMonitorFactory progressFactory )
@@ -88,11 +88,11 @@ public class FullCheck
         this(checkPropertyOwners, MULTI_THREADED, progressFactory);
     }
 
-    FullCheck( boolean checkPropertyOwners, StoreProcessorTask.TaskExecution execution,
+    public FullCheck( boolean checkPropertyOwners, TaskExecutionOrder order,
                ProgressMonitorFactory progressFactory )
     {
         this.checkPropertyOwners = checkPropertyOwners;
-        this.execution = execution;
+        this.order = order;
         this.progressFactory = progressFactory;
     }
 
@@ -142,7 +142,7 @@ public class FullCheck
         tasks.add( new StoreProcessorTask<DynamicRecord>( store.getTypeNameStore(), progress, processEverything ) );
         tasks.add( new StoreProcessorTask<DynamicRecord>( store.getPropertyKeyStore(), progress, processEverything ) );
 
-        execution.execute( processEverything, tasks, progress.build() );
+        order.execute( processEverything, tasks, progress.build() );
     }
 
     public static void run( ProgressMonitorFactory progressFactory, String storeDir, Config config,
@@ -170,7 +170,7 @@ public class FullCheck
         }
     }
 
-    private static StoreProcessorTask.TaskExecution executionMode( Config config )
+    private static TaskExecutionOrder executionMode( Config config )
     {
         if ( config.get( consistency_check_multiple_passes ) )
         {

@@ -19,12 +19,6 @@
  */
 package org.neo4j.consistency.checking.full;
 
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
-import org.neo4j.helpers.progress.Completion;
 import org.neo4j.helpers.progress.ProgressListener;
 import org.neo4j.helpers.progress.ProgressMonitorFactory;
 import org.neo4j.kernel.impl.nioneo.store.AbstractBaseRecord;
@@ -67,87 +61,7 @@ class StoreProcessorTask<R extends AbstractBaseRecord>
         }
     }
 
-    enum TaskExecution
-    {
-        MULTI_THREADED
-        {
-            @Override
-            void execute( RecordStore.Processor processor, List<StoreProcessorTask> tasks, Completion completion )
-                    throws ConsistencyCheckIncompleteException
-            {
-                ExecutorService executor = Executors.newFixedThreadPool( Runtime.getRuntime().availableProcessors() );
-                for ( StoreProcessorTask task : tasks )
-                {
-                    executor.submit( new TaskRunner( processor, task ) );
-                }
-
-                try
-                {
-                    completion.await( 7, TimeUnit.DAYS );
-                }
-                catch ( Exception e )
-                {
-                    processor.stopScanning();
-                    throw new ConsistencyCheckIncompleteException( e );
-                }
-                finally
-                {
-                    executor.shutdown();
-                    try
-                    {
-                        executor.awaitTermination( 10, TimeUnit.SECONDS );
-                    }
-                    catch ( InterruptedException e )
-                    {
-                        // don't care
-                    }
-                }
-            }
-        },
-        SINGLE_THREADED
-        {
-            @Override
-            void execute( RecordStore.Processor processor, List<StoreProcessorTask> tasks, Completion completion )
-                    throws ConsistencyCheckIncompleteException
-            {
-                try
-                {
-                    for ( StoreProcessorTask task : tasks )
-                    {
-                        task.singlePass( processor );
-                    }
-                }
-                catch ( Exception e )
-                {
-                    throw new ConsistencyCheckIncompleteException( e );
-                }
-            }
-        },
-        MULTI_PASS
-        {
-            @Override
-            void execute( RecordStore.Processor processor, List<StoreProcessorTask> tasks, Completion completion )
-                    throws ConsistencyCheckIncompleteException
-            {
-                try
-                {
-                    for ( StoreProcessorTask task : tasks )
-                    {
-                        task.multiPass();
-                    }
-                }
-                catch ( Exception e )
-                {
-                    throw new ConsistencyCheckIncompleteException( e );
-                }
-            }
-        };
-
-        abstract void execute( RecordStore.Processor processor, List<StoreProcessorTask> tasks, Completion completion )
-                throws ConsistencyCheckIncompleteException;
-    }
-
-    private static class TaskRunner implements Runnable
+    static class TaskRunner implements Runnable
     {
         private final RecordStore.Processor processor;
         private final StoreProcessorTask task;
