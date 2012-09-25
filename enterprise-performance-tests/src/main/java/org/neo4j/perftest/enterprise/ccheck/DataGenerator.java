@@ -30,6 +30,7 @@ import java.util.Random;
 import java.util.TreeMap;
 
 import org.neo4j.graphdb.RelationshipType;
+import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 import org.neo4j.helpers.progress.ProgressMonitorFactory;
 import org.neo4j.helpers.progress.ProgressListener;
 import org.neo4j.kernel.impl.batchinsert.BatchInserter;
@@ -48,6 +49,7 @@ import org.neo4j.perftest.enterprise.util.Parameters;
 import org.neo4j.perftest.enterprise.util.Setting;
 
 import static java.util.Arrays.asList;
+import static org.neo4j.graphdb.factory.GraphDatabaseSetting.NumberOfBytesSetting.parseNumberOfBytes;
 import static org.neo4j.perftest.enterprise.util.Configuration.SYSTEM_PROPERTIES;
 import static org.neo4j.perftest.enterprise.util.Configuration.settingsOf;
 import static org.neo4j.perftest.enterprise.util.Predicate.integerRange;
@@ -202,7 +204,7 @@ public class DataGenerator
             Conversion.TO_INTEGER );
     static final Setting<List<RelationshipSpec>> relationships = listSetting(
             adaptSetting( stringSetting( "relationships" ), RelationshipSpec.FROM_STRING ),
-            asList(new RelationshipSpec( "RELATED_TO", 2 )) );
+            asList( new RelationshipSpec( "RELATED_TO", 2 ) ) );
     static final Setting<List<PropertySpec>> node_properties = listSetting(
             adaptSetting( Setting.stringSetting( "node_properties" ), PropertySpec.PARSER ),
             asList( new PropertySpec( PropertyGenerator.STRING, 1 ),
@@ -210,6 +212,8 @@ public class DataGenerator
     static final Setting<List<PropertySpec>> relationship_properties = listSetting(
             adaptSetting( Setting.stringSetting( "relationship_properties" ), PropertySpec.PARSER ),
             Collections.<PropertySpec>emptyList() );
+    private static final Setting<String> all_stores_total_mapped_memory_size =
+            stringSetting( "all_stores_total_mapped_memory_size", "2G" );
 
     private final boolean reportProgress;
     private final int nodeCount;
@@ -310,7 +314,7 @@ public class DataGenerator
         String storeDir = configuration.get( store_dir );
         FileUtils.deleteRecursively( new File( storeDir ) );
         DataGenerator generator = new DataGenerator( configuration );
-        BatchInserter batchInserter = new BatchInserterImpl( storeDir, generator.batchInserterConfig() );
+        BatchInserter batchInserter = new BatchInserterImpl( storeDir, batchInserterConfig( configuration ) );
         try
         {
             generator.generateData( batchInserter );
@@ -347,15 +351,25 @@ public class DataGenerator
         System.out.format( "Number of records in %s: %d%n", name, store.getHighId() );
     }
 
-    private Map<String, String> batchInserterConfig()
+    private static Map<String, String> batchInserterConfig(Configuration configuration)
     {
+        Long mappedMemory = parseNumberOfBytes( configuration.get( all_stores_total_mapped_memory_size ) );
+
         Map<String, String> config = new HashMap<String, String>();
         config.put( "use_memory_mapped_buffers", "true" );
         config.put( "dump_configuration", "true" );
-        config.put( "neostore.nodestore.db.mapped_memory", "1200M" );
-        config.put( "neostore.relationshipstore.db.mapped_memory", "5000M" );
-        config.put( "neostore.propertystore.db.mapped_memory", "2000M" );
+        config.put( "neostore.nodestore.db.mapped_memory", mega( mappedMemory / 6 ) );
+        config.put( "neostore.relationshipstore.db.mapped_memory", mega( mappedMemory / 2 ) );
+        config.put( "neostore.propertystore.db.mapped_memory", mega( mappedMemory / 3 ) );
+        config.put( GraphDatabaseSettings.all_stores_total_mapped_memory_size.name(),
+                configuration.get( all_stores_total_mapped_memory_size ) );
+
         return config;
+    }
+
+    private static String mega( long bytes )
+    {
+        return (bytes / 1024 / 1024) + "M";
     }
 
     private static class PropertyStats extends RecordStore.Processor
