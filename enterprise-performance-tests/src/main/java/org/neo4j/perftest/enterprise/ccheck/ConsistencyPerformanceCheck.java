@@ -78,6 +78,8 @@ public class ConsistencyPerformanceCheck
     private static final Setting<String> mapped_memory_page_size = stringSetting( "mapped_memory_page_size", "4k" );
     private static final Setting<Boolean> log_mapped_memory_stats =
             booleanSetting( "log_mapped_memory_stats", true );
+    private static final Setting<String> log_mapped_memory_stats_filename =
+            stringSetting( "log_mapped_memory_stats_filename", "mapped_memory_stats.log" );
     private static final Setting<Long> log_mapped_memory_stats_interval =
             integerSetting( "log_mapped_memory_stats_interval", 1000000 );
 
@@ -148,12 +150,16 @@ public class ConsistencyPerformanceCheck
         StoreAccess createStoreAccess( Configuration configuration )
         {
             Config config = new Config( new ConfigurationDefaults( GraphDatabaseSettings.class ).apply( stringMap(
+                    GraphDatabaseSettings.store_dir.name(),
+                            configuration.get( DataGenerator.store_dir ),
                     GraphDatabaseSettings.all_stores_total_mapped_memory_size.name(),
                             configuration.get( all_stores_total_mapped_memory_size ),
                     GraphDatabaseSettings.mapped_memory_page_size.name(),
                             configuration.get( mapped_memory_page_size ),
                     GraphDatabaseSettings.log_mapped_memory_stats.name(),
                             configuration.get( log_mapped_memory_stats ).toString(),
+                    GraphDatabaseSettings.log_mapped_memory_stats_filename.name(),
+                            configuration.get( log_mapped_memory_stats_filename ),
                     GraphDatabaseSettings.log_mapped_memory_stats_interval.name(),
                             configuration.get( log_mapped_memory_stats_interval ).toString() ) ) );
 
